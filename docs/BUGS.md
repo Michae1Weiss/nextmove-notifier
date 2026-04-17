@@ -282,4 +282,12 @@ To get your Telegram chat ID:
   3. Find your chat ID in the response
 ```
 
-Then I've 
+Then I've edited **/opt/nextmove-notifier/.env** with my Telegram credentials!
+I tested **/opt/nextmove-notifier/run.sh** manually and it worked, I got messages from telegram.
+But when I've executed `tail -f /var/log/nextmove-notifier.log` after an hour I got ... nothing!
+```console
+tail: cannot open '/var/log/nextmove-notifier.log' for reading: No such file or directory
+tail: no files remaining
+```
+
+And `crontab -l` also returns nothing! Why?

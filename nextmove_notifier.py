@@ -175,13 +175,17 @@ def parse_testdrives_html(html: str) -> list[dict]:
                         offers.append(text)
 
         # Strategy 2: Solingen-style — h3 is in a <li> with no sub-<ul>,
-        # and offers are in the NEXT <ul> block
-        if not offers and parent_li:
+        # and offers are in the NEXT <ul> block.
+        # Only trigger when the parent <li> has no nested <ul> at all;
+        # "keine" cities have a <ul> with filtered content and must not fall through here.
+        if not offers and parent_li and not parent_li.find("ul"):
             parent_ul = parent_li.find_parent("ul")
             if parent_ul:
                 next_ul = parent_ul.find_next_sibling("ul")
                 if next_ul:
                     for li in next_ul.find_all("li"):
+                        if li.find("li"):  # skip wrapper elements that contain nested lis
+                            continue
                         text = li.get_text(strip=True)
                         if text and text.lower() != "keine":
                             offers.append(text)

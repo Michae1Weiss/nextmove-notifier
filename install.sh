@@ -37,8 +37,12 @@ sudo mv /tmp/nextmove-check.sh "$INSTALL_DIR/run.sh"
 sudo chmod +x "$INSTALL_DIR/run.sh"
 
 # Install crontab entry (every 15 minutes)
-CRON_LINE="*/15 * * * * $INSTALL_DIR/run.sh >> /var/log/nextmove-notifier.log 2>&1"
-(crontab -l 2>/dev/null | grep -v "nextmove"; echo "$CRON_LINE") | crontab -
+CRON_LINE="*/15 * * * * $INSTALL_DIR/run.sh >> $INSTALL_DIR/notifier.log 2>&1"
+TMPFILE=$(mktemp)
+crontab -l 2>/dev/null | grep -v "nextmove" > "$TMPFILE" || true
+echo "$CRON_LINE" >> "$TMPFILE"
+crontab "$TMPFILE"
+rm -f "$TMPFILE"
 
 echo "✅ Installed to $INSTALL_DIR"
 echo "✅ Cron job set: every 15 minutes"
@@ -46,7 +50,7 @@ echo ""
 echo "Next steps:"
 echo "  1. Edit $INSTALL_DIR/.env with your Telegram bot token and chat ID"
 echo "  2. Test manually: $INSTALL_DIR/run.sh"
-echo "  3. Check logs: tail -f /var/log/nextmove-notifier.log"
+echo "  3. Check logs: tail -f $INSTALL_DIR/notifier.log"
 echo ""
 echo "To get your Telegram chat ID:"
 echo "  1. Message your bot on Telegram"

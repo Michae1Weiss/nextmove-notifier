@@ -503,9 +503,51 @@ class TestEdgeCases(unittest.TestCase):
         </ul>
         """
         result = parse_testdrives_html(html)
-        # This is tricky — Solingen's offers are in a SEPARATE <ul>
-        # Our parser needs to handle this. At minimum it should find the offer.
-        self.assertTrue(len(result) >= 1)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["city"], "Solingen")
+        self.assertIn("Maxus", result[0]["text"])
+
+    def test_keine_city_gets_no_false_positives(self):
+        """A 'keine' city in one <ul> must not steal offers from a sibling <ul>."""
+        html = """
+        <ul>
+        <li>
+        <h3><span>Arnstadt</span></h3>
+        <ul><li><b>keine</b></li></ul>
+        </li>
+        </ul>
+        <ul>
+        <li>
+        <h3><span>Sinsheim</span></h3>
+        <ul><li><strong>VW. ID4 (509) nach Arnstadt, ab dem 22.04., 2 Tage 600 km frei</strong></li></ul>
+        </li>
+        </ul>
+        """
+        result = parse_testdrives_html(html)
+        cities = [r["city"] for r in result]
+        self.assertNotIn("Arnstadt", cities)
+        self.assertIn("Sinsheim", cities)
+        self.assertEqual(len(result), 1)
+
+    def test_solingen_no_duplicate(self):
+        """Solingen's orphaned offer must appear exactly once, not twice."""
+        html = """
+        <ul>
+        <li>
+        <h3><span style="color: #99cc00;">Solingen</span></h3>
+        </li>
+        </ul>
+        <ul>
+        <li style="list-style-type: none;">
+        <ul>
+        <li><strong>Maxus eDeliver3 (13, 53, 54) nach Leipzig, ab sofort, 3 Tage 700 km frei</strong></li>
+        </ul>
+        </li>
+        </ul>
+        """
+        result = parse_testdrives_html(html)
+        solingen = [r for r in result if r["city"] == "Solingen"]
+        self.assertEqual(len(solingen), 1)
 
 
 if __name__ == "__main__":
