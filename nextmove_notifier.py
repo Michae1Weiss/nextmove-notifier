@@ -6,11 +6,14 @@ Sends Telegram notifications for new offers.
 import json
 import logging
 import os
+import re
+import ssl
 import sys
 from datetime import datetime
 
 import requests
 from bs4 import BeautifulSoup
+from requests.adapters import HTTPAdapter
 
 # ---------------------------------------------------------------------------
 # Config
@@ -23,13 +26,48 @@ ANFRAGE_URL = "https://nextmove.de/anfrage/?reason=219740009"
 
 DEFAULT_STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.json")
 
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/131.0.0.0 Safari/537.36"
+)
+
 HEADERS = {
     "accept": "application/json, text/plain, */*",
     "accept-language": "de",
     "content-type": "application/json",
     "cache-control": "no-cache",
     "pragma": "no-cache",
+    "user-agent": USER_AGENT,
 }
+
+BROWSER_HEADERS = {
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "accept-language": "de-DE,de;q=0.9,en;q=0.8",
+    "cache-control": "no-cache",
+    "user-agent": USER_AGENT,
+}
+
+
+# ---------------------------------------------------------------------------
+# SSL adapter — fixes SSLv3 handshake failures with some servers
+# ---------------------------------------------------------------------------
+
+class TLSAdapter(HTTPAdapter):
+    """Force TLS 1.2+ and use a broader cipher set for compatibility."""
+    def init_poolmanager(self, *args, **kwargs):
+        ctx = ssl.create_default_context()
+        ctx.set_ciphers("DEFAULT:@SECLEVEL=1")
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        kwargs["ssl_context"] = ctx
+        return super().init_poolmanager(*args, **kwargs)
+
+
+def _session() -> requests.Session:
+    """Create a requests session with TLS adapter mounted."""
+    s = requests.Session()
+    s.mount("https://", TLSAdapter())
+    return s
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,7 +83,7 @@ log = logging.getLogger(__name__)
 def fetch_session_token() -> str | None:
     """Start a session and return the API token."""
     try:
-        resp = requests.post(
+        resp = _session().post(
             f"{BASE_URL}/session/start",
             headers=HEADERS,
             json={"referral": None},
@@ -61,7 +99,7 @@ def fetch_session_token() -> str | None:
 def fetch_rent_gaps(token: str) -> list:
     """Fetch current Last-Minute rent gap offers."""
     try:
-        resp = requests.get(
+        resp = _session().get(
             f"{BASE_URL}/booking/rentGaps",
             headers={**HEADERS, "x-api-token": token},
             timeout=15,
@@ -76,7 +114,7 @@ def fetch_rent_gaps(token: str) -> list:
 def fetch_master_data(token: str) -> dict:
     """Fetch master data (models, sites) for resolving names."""
     try:
-        resp = requests.get(
+        resp = _session().get(
             f"{BASE_URL}/session/masterData",
             headers={**HEADERS, "x-api-token": token},
             timeout=15,
@@ -91,7 +129,7 @@ def fetch_master_data(token: str) -> dict:
 def fetch_testdrives_html() -> str:
     """Fetch the Überführungsfahrten page HTML."""
     try:
-        resp = requests.get(TESTDRIVES_URL, timeout=15)
+        resp = _session().get(TESTDRIVES_URL, headers=BROWSER_HEADERS, timeout=15)
         resp.raise_for_status()
         return resp.text
     except Exception as e:
@@ -293,7 +331,7 @@ def send_telegram_message(text: str, bot_token: str, chat_id: str) -> None:
     """Send a message via Telegram Bot API."""
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     try:
-        resp = requests.post(url, json={
+        resp = _session().post(url, json={
             "chat_id": chat_id,
             "text": text,
             "parse_mode": "Markdown",

@@ -1,10 +1,13 @@
 """Tests for nextmove-notifier — written BEFORE implementation (TDD)."""
 
+import json
 import os
 import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
+from datetime import date
 
+# We'll import from our module once it exists
 from nextmove_notifier import (
     fetch_session_token,
     fetch_rent_gaps,
@@ -361,26 +364,29 @@ class TestBuildTestdriveMessage(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestSendTelegramMessage(unittest.TestCase):
-    @patch("nextmove_notifier.requests.post")
-    def test_calls_telegram_api(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=200, json=lambda: {"ok": True})
+    @patch("nextmove_notifier._session")
+    def test_calls_telegram_api(self, mock_session):
+        mock_resp = MagicMock(status_code=200, json=lambda: {"ok": True})
+        mock_session.return_value.post.return_value = mock_resp
         send_telegram_message("Hello", bot_token="TOKEN", chat_id="12345")
-        mock_post.assert_called_once()
-        call_url = mock_post.call_args[0][0]
+        mock_session.return_value.post.assert_called_once()
+        call_url = mock_session.return_value.post.call_args[0][0]
         self.assertIn("TOKEN", call_url)
         self.assertIn("sendMessage", call_url)
 
-    @patch("nextmove_notifier.requests.post")
-    def test_sends_correct_payload(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=200, json=lambda: {"ok": True})
+    @patch("nextmove_notifier._session")
+    def test_sends_correct_payload(self, mock_session):
+        mock_resp = MagicMock(status_code=200, json=lambda: {"ok": True})
+        mock_session.return_value.post.return_value = mock_resp
         send_telegram_message("Test msg", bot_token="TOK", chat_id="999")
-        payload = mock_post.call_args[1].get("json") or mock_post.call_args[1].get("data") or mock_post.call_args[0][1] if len(mock_post.call_args[0]) > 1 else mock_post.call_args[1]["json"]
+        payload = mock_session.return_value.post.call_args[1]["json"]
         self.assertEqual(payload["chat_id"], "999")
         self.assertEqual(payload["text"], "Test msg")
 
-    @patch("nextmove_notifier.requests.post")
-    def test_handles_api_error_gracefully(self, mock_post):
-        mock_post.return_value = MagicMock(status_code=400, text="Bad Request")
+    @patch("nextmove_notifier._session")
+    def test_handles_api_error_gracefully(self, mock_session):
+        mock_resp = MagicMock(status_code=400, text="Bad Request")
+        mock_session.return_value.post.return_value = mock_resp
         # Should not raise
         send_telegram_message("Test", bot_token="TOK", chat_id="999")
 
@@ -390,53 +396,53 @@ class TestSendTelegramMessage(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestFetchSessionToken(unittest.TestCase):
-    @patch("nextmove_notifier.requests.post")
-    def test_returns_token(self, mock_post):
-        mock_post.return_value = MagicMock(
-            status_code=200,
-            json=lambda: SAMPLE_SESSION_RESPONSE,
-        )
+    @patch("nextmove_notifier._session")
+    def test_returns_token(self, mock_session):
+        mock_resp = MagicMock(status_code=200)
+        mock_resp.json.return_value = SAMPLE_SESSION_RESPONSE
+        mock_resp.raise_for_status = MagicMock()
+        mock_session.return_value.post.return_value = mock_resp
         token = fetch_session_token()
         self.assertEqual(token, "abc123tokenxyz")
 
-    @patch("nextmove_notifier.requests.post")
-    def test_returns_none_on_error(self, mock_post):
-        mock_post.side_effect = Exception("Connection error")
+    @patch("nextmove_notifier._session")
+    def test_returns_none_on_error(self, mock_session):
+        mock_session.return_value.post.side_effect = Exception("Connection error")
         token = fetch_session_token()
         self.assertIsNone(token)
 
 
 class TestFetchRentGaps(unittest.TestCase):
-    @patch("nextmove_notifier.requests.get")
-    def test_returns_gaps_list(self, mock_get):
-        mock_get.return_value = MagicMock(
-            status_code=200,
-            json=lambda: SAMPLE_RENT_GAPS,
-        )
+    @patch("nextmove_notifier._session")
+    def test_returns_gaps_list(self, mock_session):
+        mock_resp = MagicMock(status_code=200)
+        mock_resp.json.return_value = SAMPLE_RENT_GAPS
+        mock_resp.raise_for_status = MagicMock()
+        mock_session.return_value.get.return_value = mock_resp
         gaps = fetch_rent_gaps("sometoken")
         self.assertEqual(len(gaps), 2)
 
-    @patch("nextmove_notifier.requests.get")
-    def test_returns_empty_on_error(self, mock_get):
-        mock_get.side_effect = Exception("timeout")
+    @patch("nextmove_notifier._session")
+    def test_returns_empty_on_error(self, mock_session):
+        mock_session.return_value.get.side_effect = Exception("timeout")
         gaps = fetch_rent_gaps("sometoken")
         self.assertEqual(gaps, [])
 
 
 class TestFetchMasterData(unittest.TestCase):
-    @patch("nextmove_notifier.requests.get")
-    def test_returns_master_data(self, mock_get):
-        mock_get.return_value = MagicMock(
-            status_code=200,
-            json=lambda: SAMPLE_MASTER_DATA,
-        )
+    @patch("nextmove_notifier._session")
+    def test_returns_master_data(self, mock_session):
+        mock_resp = MagicMock(status_code=200)
+        mock_resp.json.return_value = SAMPLE_MASTER_DATA
+        mock_resp.raise_for_status = MagicMock()
+        mock_session.return_value.get.return_value = mock_resp
         data = fetch_master_data("sometoken")
         self.assertIn("models", data)
         self.assertIn("sites", data)
 
-    @patch("nextmove_notifier.requests.get")
-    def test_returns_empty_on_error(self, mock_get):
-        mock_get.side_effect = Exception("fail")
+    @patch("nextmove_notifier._session")
+    def test_returns_empty_on_error(self, mock_session):
+        mock_session.return_value.get.side_effect = Exception("fail")
         data = fetch_master_data("sometoken")
         self.assertEqual(data, {})
 
